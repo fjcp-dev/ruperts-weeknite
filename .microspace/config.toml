@@ -1,0 +1,25 @@
+#
+# This is the *microspace-level* config for *fx-microharness* (MICA) working on *<PROJECT-NAME>*
+#
+
+[inference]
+allowed-providers = "all"
+
+[toolbox]
+rules = [
+    # Allow read-write access to selected microspace-level files of MICA's
+    { action = "allow", op = "files-*",     path = "$$/AGENTS.md" },
+    { action = "allow", op = "files-*",     path = "$$/rules/"    },
+    { action = "allow", op = "files-*",     path = "$$/skills/"   },
+    { action = "allow", op = "files-*",     path = "$$/transfer/" },
+
+    # Allow read-only access to the rest of the microspace-level files of MICA's
+    { action = "allow", op = "files-read",  path = "$$/" },
+    { action = "deny",  op = "files-write", path = "$$/" },
+
+    # Allow read-write access to the rest of the microspace
+    { action = "allow", op = "files-*",     path = "$/" },
+]
+
+[toolbox.env]
+TMPDIR = { path = "$/tmp/", override = "ok" }

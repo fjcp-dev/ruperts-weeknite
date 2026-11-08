@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# scratch
+/tmp/
+
+# MICA microspace runtime state (this checkout's conversations and secrets)
+.microspace/convos/
+.microspace/transfer/
+.microspace/secrets/
