@@ -219,7 +219,7 @@
 
         <div id="menu" class="overlay">
             <h1>RUPERT'S WEEKNITE!</h1>
-            <p id="buildTag" style="opacity:0.6;font-size:13px;margin-top:-8px;">v1.20.4</p>
+            <p id="buildTag" style="opacity:0.6;font-size:13px;margin-top:-8px;">v1.21.0</p>
             <h2>Weeknite warfare — last one standing wins</h2>
             <p id="controlsHelp"></p>
             <button id="startBtn">START</button>
@@ -304,6 +304,7 @@ const enemies      = [];
 const colliders    = [];   // AABBs of crates/walls for movement collision
 const shootables   = [];   // meshes bullets can hit (enemies remove theirs on death)
 const tracers      = [];
+const clouds       = [];  // blocky sky decorations
 const botFightCD   = new Map();  // enemy -> cooldown until its next free hit vs bots
 const botTracerPool = [];
 const loots       = [];  // chests: { mesh, tier, lid, opened }
@@ -386,6 +387,50 @@ const AudioFX = {
     gameOver()  { this.tone(300, 0.5, 'sawtooth', 0.2, 60); },
 };
 
+// 16x16 pixel-art canvas textures, NearestFilter — Minecraft 2017 vibes
+const TEX = (() => {
+    const make = (draw) => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 16;
+        const g = c.getContext('2d');
+        draw(g);
+        const t = new THREE.CanvasTexture(c);
+        t.magFilter = THREE.NearestFilter;
+        t.minFilter = THREE.NearestFilter;
+        return t;
+    };
+    const speckle = (g, cols) => {
+        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+            g.fillStyle = cols[(Math.random() * cols.length) | 0];
+            g.fillRect(x, y, 1, 1);
+        }
+    };
+    return {
+        grass:  make((g) => speckle(g, ['#5fae44', '#56a33d', '#6ab84e', '#4f9a38'])),
+        stone:  make((g) => speckle(g, ['#8f8f8f', '#7d7d7d', '#9a9a9a', '#737373'])),
+        planks: make((g) => {
+            speckle(g, ['#a37b50', '#997349', '#ab8258']);
+            g.fillStyle = '#6e4f2f';
+            for (const y of [3, 7, 11, 15]) g.fillRect(0, y, 16, 1);
+        }),
+        log:    make((g) => {
+            speckle(g, ['#6b4d2e', '#5f4327', '#75563a']);
+            g.fillStyle = '#4a3520';
+            for (const x of [2, 6, 10, 14]) g.fillRect(x, 0, 1, 16);
+        }),
+        leaves: make((g) => speckle(g, ['#3e7a2a', '#356e23', '#468631', '#2f611e'])),
+        face:   make((g) => {
+            speckle(g, ['#e8b98a', '#dfae7e', '#eec296']);
+            g.fillStyle = '#ffffff';
+            g.fillRect(3, 5, 3, 2); g.fillRect(10, 5, 3, 2);
+            g.fillStyle = '#3a2f8c';
+            g.fillRect(4, 5, 2, 2); g.fillRect(10, 5, 2, 2);
+            g.fillStyle = '#8c5a3c';
+            g.fillRect(6, 10, 4, 2);
+        }),
+    };
+})();
+
 // ============================================================================
 // World building
 // ============================================================================
@@ -414,18 +459,20 @@ function buildWorld() {
     sun.shadow.camera.top  =  40; sun.shadow.camera.bottom = -40;
     scene.add(sun);
 
-    // ground
+    // ground — tiled grass-block texture, Minecraft style
+    const grassTex = TEX.grass;
+    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+    grassTex.repeat.set(CONFIG.arena, CONFIG.arena);
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(CONFIG.arena * 2, CONFIG.arena * 2),
-        new THREE.MeshLambertMaterial({ color: 0x4caf50 })
+        new THREE.MeshLambertMaterial({ map: grassTex })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
-    scene.add(new THREE.GridHelper(CONFIG.arena * 2, 30, 0x2e7d32, 0x2e7d32));
 
     // arena walls
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0x8d6e63 });
+    const wallMat = new THREE.MeshLambertMaterial({ map: TEX.stone });
     const H = 3, T = 1, S = CONFIG.arena;
     [
         [0, -S - T / 2, S * 2 + T * 2, T],
@@ -445,7 +492,7 @@ function buildWorld() {
     });
 
     // crates — cover to run between
-    const crateCols = [0xa1887f, 0x8d6e63, 0xbc8f5f, 0xd4a373];
+    // crates — wooden plank blocks for cover
     let seed = 7;
     const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     for (let i = 0; i < 16; i++) {
@@ -457,7 +504,7 @@ function buildWorld() {
         } while (Math.hypot(x, z) < 7);
         const crate = new THREE.Mesh(
             new THREE.BoxGeometry(s, s, s),
-            new THREE.MeshLambertMaterial({ color: crateCols[i % crateCols.length] })
+            new THREE.MeshLambertMaterial({ map: TEX.planks })
         );
         crate.position.set(x, s / 2, z);
         crate.rotation.y = rand() * Math.PI;
@@ -468,6 +515,50 @@ function buildWorld() {
         colliders.push({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r });
         shootables.push(crate);
     }
+
+    // trees — Minecraft style: log trunk + leaf canopy
+    const logMat  = new THREE.MeshLambertMaterial({ map: TEX.log });
+    const leafMat = new THREE.MeshLambertMaterial({ map: TEX.leaves });
+    for (let i = 0; i < 22; i++) {
+        let x, z;
+        do {
+            x = (rand() * 2 - 1) * (S - 6);
+            z = (rand() * 2 - 1) * (S - 6);
+        } while (Math.hypot(x, z) < 10);
+        const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.1, 4, 1.1), logMat);
+        trunk.position.set(x, 2, z);
+        trunk.castShadow = true;
+        scene.add(trunk);
+        colliders.push({ minX: x - 0.75, maxX: x + 0.75, minZ: z - 0.75, maxZ: z + 0.75 });
+        shootables.push(trunk);
+        for (const [ly, s] of [[4.6, 4.6], [6.4, 3.0]]) {
+            const leaves = new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.55, s), leafMat);
+            leaves.position.set(x, ly, z);
+            leaves.castShadow = true;
+            scene.add(leaves);
+            shootables.push(leaves);
+        }
+    }
+
+    // blocky clouds drifting overhead
+    for (let i = 0; i < 10; i++) {
+        const cloud = new THREE.Mesh(
+            new THREE.BoxGeometry(8 + rand() * 14, 1.4, 5 + rand() * 8),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
+        );
+        cloud.position.set((rand() * 2 - 1) * S, 30 + rand() * 12, (rand() * 2 - 1) * S);
+        scene.add(cloud);
+        clouds.push(cloud);
+    }
+
+    // pixel sun — a pale square in the sky
+    const sunSquare = new THREE.Mesh(
+        new THREE.PlaneGeometry(14, 14),
+        new THREE.MeshBasicMaterial({ color: 0xfff8c9 })
+    );
+    sunSquare.position.set(66, 110, 44);
+    sunSquare.lookAt(0, 0, 0);
+    scene.add(sunSquare);
 
     // first-person gun
     gun = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.55), new THREE.MeshLambertMaterial({ color: 0x2f3542 }));
@@ -552,6 +643,9 @@ function spawnLoot() {
 
 const ENEMY_COLORS = [0xff6b81, 0x4bcffa, 0xff9f43, 0xa29bfe, 0x2ed573, 0xf368e0];
 
+const BOT_SKIN = new THREE.MeshLambertMaterial({ color: 0xe8b98a });
+const BOT_FACE = new THREE.MeshLambertMaterial({ map: TEX.face });
+
 const KID_NAMES = [
     'Skibidi', 'Rizzler', 'Gyatt', 'OhioSigma', 'FanumTax', 'BabyGronk', 'Livvy',
     'DukeDennis', 'KaiCenat', 'SussyBaka', 'Amogus', 'Impostor', 'NoobSlayer69',
@@ -600,7 +694,8 @@ class Enemy {
         torso.userData.enemy = this;
         this.group.add(torso);
 
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), new THREE.MeshLambertMaterial({ color: 0xffcc99 }));
+        const headMats = [BOT_SKIN, BOT_SKIN, BOT_SKIN, BOT_SKIN, BOT_FACE, BOT_SKIN];
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), headMats);
         head.position.y = 1.85;
         head.userData.enemy = this;
         head.userData.isHead = true;
@@ -1362,6 +1457,11 @@ function animate() {
         if (!l.mesh.parent) continue; // collected chest pending splice
         l.mesh.rotation.y += dt * 1.5;
         if (l.beam) l.beam.material.opacity = 0.45 + Math.sin(performance.now() * 0.004 + l.mesh.position.x) * 0.25;
+    }
+
+    for (const c of clouds) {
+        c.position.x += dt * 1.2;
+        if (c.position.x > CONFIG.arena + 30) c.position.x = -CONFIG.arena - 30;
     }
 
     for (let i = tracers.length - 1; i >= 0; i--) {
