@@ -219,7 +219,7 @@
 
         <div id="menu" class="overlay">
             <h1>RUPERT'S WEEKNITE!</h1>
-            <p id="buildTag" style="opacity:0.6;font-size:13px;margin-top:-8px;">v1.21.0</p>
+            <p id="buildTag" style="opacity:0.6;font-size:13px;margin-top:-8px;">v1.21.1</p>
             <h2>Weeknite warfare — last one standing wins</h2>
             <p id="controlsHelp"></p>
             <button id="startBtn">START</button>
@@ -263,12 +263,13 @@ const CONFIG = {
     playerHP:         400,
 
     // weapons: walk over a loot crate to upgrade (tier order matters)
+    // interval = seconds between shots when holding FIRE (Rupert wanted fast full-auto)
     weapons: [
-        { name: 'Pistol',        rarity: 'Common',    color: '#b8c2cc', tier: 0, dmg: 25,  head: 75,  interval: 0.13 },
-        { name: 'SMG',           rarity: 'Uncommon',  color: '#2ed573', tier: 1, dmg: 18,  head: 45,  interval: 0.07 },
-        { name: 'Assault Rifle', rarity: 'Rare',      color: '#4bcffa', tier: 2, dmg: 32,  head: 90,  interval: 0.11 },
-        { name: 'Shotgun',       rarity: 'Epic',      color: '#a29bfe', tier: 3, dmg: 70,  head: 120, interval: 0.8,  range: 25 },
-        { name: 'Sniper',        rarity: 'Legendary', color: '#ffd24d', tier: 4, dmg: 150, head: 250, interval: 1.4 },
+        { name: 'Pistol',        rarity: 'Common',    color: '#b8c2cc', tier: 0, dmg: 25,  head: 75,  interval: 0.06 },
+        { name: 'SMG',           rarity: 'Uncommon',  color: '#2ed573', tier: 1, dmg: 18,  head: 45,  interval: 0.035 },
+        { name: 'Assault Rifle', rarity: 'Rare',      color: '#4bcffa', tier: 2, dmg: 32,  head: 90,  interval: 0.05 },
+        { name: 'Shotgun',       rarity: 'Epic',      color: '#a29bfe', tier: 3, dmg: 70,  head: 120, interval: 0.35, range: 25 },
+        { name: 'Sniper',        rarity: 'Legendary', color: '#ffd24d', tier: 4, dmg: 150, head: 250, interval: 0.6 },
     ],     // 4 bars for Rupert: 3 shield + 1 health
     enemyHP:          100,
     enemyDamage:      8,      // 50 hits x 8 = Rupert's 400 total — exactly as asked
